@@ -1,47 +1,65 @@
 import os
-import google.generativeai as genai
-from googleapiclient.discovery import build
+import datetime
+import json
+from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
 
-# Load Gmail API credentials
-SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
-creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-service = build("gmail", "v1", credentials=creds)
+# 📌 Define the necessary API scopes
+SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-# Set up Gemini API
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+# ✅ Authenticate and get Google Calendar service
+def authenticate_google():
+    creds = None
+    token_path = "token.json"
 
-# Fetch unread emails
-results = service.users().messages().list(userId="me", labelIds=["INBOX"], q="is:unread").execute()
-messages = results.get("messages", [])
+    # 🔄 Load existing credentials if available
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
 
-if not messages:
-    print("📭 No unread emails found.")
-else:
-    print(f"📨 Found {len(messages)} unread emails.")
-    print("-" * 50)
+    # 🌐 Refresh or request new authentication
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            creds = flow.run_local_server(port=0)
 
-    for msg in messages:
-        msg_id = msg["id"]
-        msg_data = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+        # 💾 Save the credentials for the next run
+        with open(token_path, "w") as token_file:
+            token_file.write(creds.to_json())
 
-        headers = msg_data["payload"]["headers"]
-        subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
-        snippet = msg_data.get("snippet", "No preview available")
+    return creds
 
-        print(f"📧 **Subject:** {subject}")
-        print(f"📜 **Snippet:** {snippet}")
-        print("-" * 50)
+# 📅 Function to create an event in Google Calendar
+def create_calendar_event(service, summary, start_time, end_time, description=""):
+    event_data = {
+        "summary": summary,
+        "description": description,
+        "start": {"dateTime": start_time, "timeZone": "Asia/Kolkata"},
+        "end": {"dateTime": end_time, "timeZone": "Asia/Kolkata"},
+    }
 
-        # Send each email separately to Gemini for explanation
-        prompt = f"Explain the meaning and purpose of this email:\n\nSubject: {subject}\nBody: {snippet}"
-        
-        try:
-            response = model.generate_content(prompt)
-            explanation = response.text.strip() if response.text else "No explanation available."
-            print(f"🔍 **Gemini Explanation:** {explanation}")
-            print("=" * 50)
-        except Exception as e:
-            print(f"❌ Gemini API Error: {str(e)}")
+    # 🚀 Insert event into Google Calendar
+    event = service.events().insert(calendarId="primary", body=event_data).execute()
+
+    # 🔗 Print event link for verification
+    print(f"✅ Event Created: {event.get('htmlLink')}")
+    return event.get("htmlLink")
+
+# 🔄 Main function to authenticate and add an event
+def main():
+    creds = authenticate_google()
+    service = build("calendar", "v3", credentials=creds)
+
+    # 📌 Example Task Event
+    event_title = "AI Agentic Task Review"
+    start_time = datetime.datetime.utcnow() + datetime.timedelta(hours=2)  # 2 hours from now
+    end_time = start_time + datetime.timedelta(hours=1)
+
+    # 📝 Create event
+    create_calendar_event(service, event_title, start_time.isoformat(), end_time.isoformat(), "Discuss AI Agentic progress.")
+
+if __name__ == "__main__":
+    main()
