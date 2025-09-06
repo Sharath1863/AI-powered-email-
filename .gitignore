@@ -1,4 +1,26 @@
 # Ignore environment files
 .env
 
-# Ignore Gmail API token
+# Ignore Gmail API token and credentials
+token.json
+credentials.json
+
+# Ignore Python cache and virtual environment
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
